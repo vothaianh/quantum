@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		64E0F62C2F41A515004E6506 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 64A1B0012F41A000004E6506 /* SwiftTerm */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		64E0F42B2F419070004E6506 /* quantum.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = quantum.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -23,6 +27,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				64E0F62C2F41A515004E6506 /* SwiftTerm in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +70,7 @@
 			);
 			name = quantum;
 			packageProductDependencies = (
+				64A1B0012F41A000004E6506 /* SwiftTerm */,
 			);
 			productName = quantum;
 			productReference = 64E0F42B2F419070004E6506 /* quantum.app */;
@@ -94,6 +100,9 @@
 			);
 			mainGroup = 64E0F4222F419070004E6506;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				64A1B0002F41A000004E6506 /* XCRemoteSwiftPackageReference "SwiftTerm" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 64E0F42C2F419070004E6506 /* Products */;
 			projectDirPath = "";
@@ -254,10 +263,9 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = N8SF3PK8CV;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -286,10 +294,9 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = N8SF3PK8CV;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -331,6 +338,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		64A1B0002F41A000004E6506 /* XCRemoteSwiftPackageReference "SwiftTerm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/migueldeicaza/SwiftTerm.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.2.6;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		64A1B0012F41A000004E6506 /* SwiftTerm */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 64A1B0002F41A000004E6506 /* XCRemoteSwiftPackageReference "SwiftTerm" */;
+			productName = SwiftTerm;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 64E0F4232F419070004E6506 /* Project object */;
 }
