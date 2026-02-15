@@ -93,7 +93,7 @@ For those who still rock the Touch Bar — context-aware controls while you code
 
 ```bash
 # Clone the repo
-git clone https://github.com/AidenVo/quantum.git
+git clone https://github.com/vothaianh/quantum.git
 
 # Open in Xcode
 open quantum.xcodeproj
