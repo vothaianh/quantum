@@ -20,7 +20,7 @@
 ---
 
 <p align="center">
-  <img src="screenshot.png" alt="Quantum IDE" width="800">
+  <img src="app-screenshot.png" alt="Quantum IDE" width="800">
 </p>
 
 ---
