@@ -157,7 +157,8 @@ struct CodeEditorWebView: NSViewRepresentable {
             self.coordinatorRef = context.coordinator
         }
 
-        webView.loadHTMLString(Self.editorHTML, baseURL: nil)
+        let baseURL = Bundle.main.resourceURL
+        webView.loadHTMLString(Self.editorHTML, baseURL: baseURL)
         return webView
     }
 
@@ -246,6 +247,7 @@ struct CodeEditorWebView: NSViewRepresentable {
                 do {
                     try text.write(to: parent.fileURL, atomically: true, encoding: .utf8)
                     parent.isModified = false
+                    NotificationCenter.default.post(name: .fileSaved, object: nil)
                 } catch {
                     print("Save failed: \(error)")
                 }
@@ -335,49 +337,51 @@ struct CodeEditorWebView: NSViewRepresentable {
     <meta charset="utf-8">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.18/codemirror.min.css">
     <style>
-    html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#181B21;box-sizing:border-box}
+    @font-face{font-family:'JetBrains Mono';font-weight:400;font-style:normal;src:url('JetBrainsMono-Regular.woff2') format('woff2')}
+    @font-face{font-family:'JetBrains Mono';font-weight:700;font-style:normal;src:url('JetBrainsMono-Bold.woff2') format('woff2')}
+    html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#191919;box-sizing:border-box}
     #editor{height:100%;padding:8px 0 0 8px}
     .CodeMirror{
-        height:100%;font-family:Menlo,monospace;
-        background:#181B21;color:#D8DCE4;line-height:1.6;
+        height:100%;font-family:'JetBrains Mono',Menlo,monospace;
+        background:#191919;color:#D8E8DF;line-height:1.6;
     }
-    .CodeMirror-gutters{background:#151820;border-right:1px solid #252932}
-    .CodeMirror-linenumber{color:#4E5663;padding:0 8px 0 4px}
+    .CodeMirror-gutters{background:#141414;border-right:1px solid #232323}
+    .CodeMirror-linenumber{color:#3E5649;padding:0 8px 0 4px}
     .CodeMirror pre.CodeMirror-line,
     .CodeMirror pre.CodeMirror-line-like{padding-left:12px!important}
-    .CodeMirror-cursor{border-left:1.5px solid #fff}
-    .CodeMirror-selected{background:rgba(255,255,255,.12)!important}
-    .CodeMirror-activeline-background{background:rgba(255,255,255,.04)}
-    .CodeMirror-matchingbracket{color:#FFD700!important;text-decoration:underline}
+    .CodeMirror-cursor{border-left:2px solid #00DC82}
+    .CodeMirror-selected{background:rgba(0,220,130,.14)!important}
+    .CodeMirror-activeline-background{background:rgba(0,220,130,.04)}
+    .CodeMirror-matchingbracket{color:#00DC82!important;text-decoration:underline}
     .CodeMirror-scrollbar-filler,.CodeMirror-gutter-filler{background:transparent}
-    .CodeMirror-code span[class^="cm-"]{color:#D8DCE4}
-    .cm-keyword{color:#C586C0!important}
-    .cm-string,.cm-string-2{color:#CE9178!important}
-    .cm-comment{color:#6A9955!important;font-style:italic}
-    .cm-number{color:#B5CEA8!important}
-    .cm-def{color:#79B8FF!important}
-    .cm-variable{color:#D4D4D4!important}
-    .cm-variable-2{color:#9CDCFE!important}
-    .cm-variable-3,.cm-type{color:#4EC9B0!important}
-    .cm-property{color:#9CDCFE!important}
-    .cm-operator{color:#D4D4D4!important}
-    .cm-atom{color:#9CDCFE!important}
-    .cm-builtin{color:#DCDCAA!important}
-    .cm-attribute{color:#9CDCFE!important}
-    .cm-tag{color:#79B8FF!important}
-    .cm-meta{color:#C586C0!important}
-    .cm-qualifier{color:#4EC9B0!important}
-    .cm-bracket{color:#D4D4D4!important}
-    .cm-header{color:#79B8FF!important;font-weight:bold}
-    .cm-link{color:#9CDCFE!important;text-decoration:underline}
-    .cm-hr{color:#4E5663!important}
-    .cm-error{color:#F44747!important}
-    .ai-edit-highlight{background:rgba(86,205,122,0.12)!important}
-    .ai-edit-gutter{background:rgba(86,205,122,0.3)!important}
+    .CodeMirror-code span[class^="cm-"]{color:#D8E8DF}
+    .cm-keyword{color:#00DC82!important}
+    .cm-string,.cm-string-2{color:#B8E986!important}
+    .cm-comment{color:#4B6357!important;font-style:italic}
+    .cm-number{color:#E5C07B!important}
+    .cm-def{color:#82AAFF!important}
+    .cm-variable{color:#D8E8DF!important}
+    .cm-variable-2{color:#89DDFF!important}
+    .cm-variable-3,.cm-type{color:#C792EA!important}
+    .cm-property{color:#F07178!important}
+    .cm-operator{color:#89DDCC!important}
+    .cm-atom{color:#69F0AE!important}
+    .cm-builtin{color:#7EE8C7!important}
+    .cm-attribute{color:#FFCB6B!important}
+    .cm-tag{color:#F07178!important}
+    .cm-meta{color:#80CBC4!important}
+    .cm-qualifier{color:#56D4C0!important}
+    .cm-bracket{color:#5C7A6E!important}
+    .cm-header{color:#00DC82!important;font-weight:bold}
+    .cm-link{color:#82AAFF!important;text-decoration:underline}
+    .cm-hr{color:#4B6357!important}
+    .cm-error{color:#FF5555!important}
+    .ai-edit-highlight{background:rgba(0,220,130,0.12)!important}
+    .ai-edit-gutter{background:rgba(0,220,130,0.25)!important}
     ::-webkit-scrollbar{width:8px;height:8px}
     ::-webkit-scrollbar-track{background:transparent}
-    ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2);border-radius:4px}
-    ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.3)}
+    ::-webkit-scrollbar-thumb{background:rgba(0,220,130,.18);border-radius:4px}
+    ::-webkit-scrollbar-thumb:hover{background:rgba(0,220,130,.30)}
     ::-webkit-scrollbar-corner{background:transparent}
     </style>
     </head>

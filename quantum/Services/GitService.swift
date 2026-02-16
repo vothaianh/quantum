@@ -156,15 +156,114 @@ enum GitService {
     static func commitAll(message: String, at root: URL) -> (success: Bool, output: String) {
         let gitRoot = findGitRoot(from: root) ?? root
         // Stage all changes
-        let addOutput = run(["git", "add", "-A"], at: gitRoot)
+        let addResult = runWithStatus(["git", "add", "-A"], at: gitRoot)
+        debugLog("COMMIT ADD gitRoot=\(gitRoot.path) exitCode=\(addResult.exitCode) output=\(addResult.output)")
         // Commit
-        let commitOutput = run(["git", "commit", "-m", message], at: gitRoot)
-        let success = commitOutput.contains("file changed") ||
-                      commitOutput.contains("files changed") ||
-                      commitOutput.contains("insertions") ||
-                      commitOutput.contains("deletions") ||
-                      commitOutput.contains("create mode")
-        return (success, commitOutput.isEmpty ? addOutput : commitOutput)
+        let commitResult = runWithStatus(["git", "commit", "-m", message], at: gitRoot)
+        debugLog("COMMIT gitRoot=\(gitRoot.path) exitCode=\(commitResult.exitCode) output=\(commitResult.output)")
+        let success = commitResult.exitCode == 0
+        return (success, commitResult.output.isEmpty ? addResult.output : commitResult.output)
+    }
+
+    static func pull(at root: URL) -> (success: Bool, output: String) {
+        let gitRoot = findGitRoot(from: root) ?? root
+        let result = runWithStatus(["git", "pull", "--rebase"], at: gitRoot)
+        let output = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+        let success = result.exitCode == 0
+        debugLog("PULL gitRoot=\(gitRoot.path) exitCode=\(result.exitCode) success=\(success) output=\(result.output)")
+        return (success, output)
+    }
+
+    static func push(at root: URL) -> (success: Bool, output: String) {
+        let gitRoot = findGitRoot(from: root) ?? root
+        let result = runWithStatus(["git", "push"], at: gitRoot)
+        let output = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+        let success = result.exitCode == 0
+        debugLog("PUSH gitRoot=\(gitRoot.path) exitCode=\(result.exitCode) success=\(success) output=\(result.output)")
+        return (success, output)
+    }
+
+    /// Discard changes for a single file
+    static func discardFile(_ file: GitFileStatus, at gitRoot: URL) {
+        let rootPath = gitRoot.path.hasSuffix("/") ? gitRoot.path : gitRoot.path + "/"
+        let filePath = file.fullURL.path
+        let relativePath = filePath.hasPrefix(rootPath) ? String(filePath.dropFirst(rootPath.count)) : file.path
+
+        if file.status == .untracked {
+            // Remove untracked file
+            try? FileManager.default.removeItem(at: file.fullURL)
+        } else {
+            // Restore tracked file
+            _ = run(["git", "checkout", "HEAD", "--", relativePath], at: gitRoot)
+        }
+    }
+
+    /// Discard all changes in a repo
+    static func discardAll(at gitRoot: URL) {
+        // Restore all tracked files
+        _ = run(["git", "checkout", "HEAD", "--", "."], at: gitRoot)
+        // Remove untracked files
+        _ = run(["git", "clean", "-fd"], at: gitRoot)
+    }
+
+    // MARK: - Fetch
+
+    @discardableResult
+    static func fetch(at root: URL) -> Bool {
+        let gitRoot = findGitRoot(from: root) ?? root
+        let result = runWithStatus(["git", "fetch", "--quiet"], at: gitRoot)
+        return result.exitCode == 0
+    }
+
+    // MARK: - Git Log
+
+    private static let logSep = "‖"
+    private static let logFormat = "%h‖%H‖%s‖%an‖%aI‖%ar"
+
+    static func log(at root: URL, count: Int = 50) -> [GitCommitLog] {
+        let gitRoot = findGitRoot(from: root) ?? root
+        let output = run(["git", "log", "--pretty=format:\(logFormat)", "-n", "\(count)"], at: gitRoot)
+        return parseLogOutput(output)
+    }
+
+    static func unpulledCommits(at root: URL) -> [GitCommitLog] {
+        let gitRoot = findGitRoot(from: root) ?? root
+        // Find the upstream tracking branch
+        let upstream = run(["git", "rev-parse", "--abbrev-ref", "@{upstream}"], at: gitRoot)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !upstream.isEmpty, !upstream.contains("fatal") else { return [] }
+        // Commits on remote not yet in local HEAD
+        let output = run(["git", "log", "HEAD..\(upstream)", "--pretty=format:\(logFormat)"], at: gitRoot)
+        var commits = parseLogOutput(output)
+        for i in commits.indices { commits[i].isRemoteOnly = true }
+        return commits
+    }
+
+    private static func parseLogOutput(_ output: String) -> [GitCommitLog] {
+        guard !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
+
+        let isoFull = ISO8601DateFormatter()
+        isoFull.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let isoBasic = ISO8601DateFormatter()
+        isoBasic.formatOptions = [.withInternetDateTime]
+
+        return output.components(separatedBy: "\n").compactMap { line in
+            let parts = line.components(separatedBy: logSep)
+            guard parts.count >= 6 else { return nil }
+            let hash = parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
+            let fullHash = parts[1]
+            let message = parts[2]
+            let author = parts[3]
+            let dateStr = parts[4]
+            let relDate = parts[5]
+            let date = isoFull.date(from: dateStr)
+                ?? isoBasic.date(from: dateStr)
+                ?? Date.distantPast
+            return GitCommitLog(
+                id: hash, fullHash: fullHash, message: message,
+                author: author, date: date, relativeDate: relDate
+            )
+        }
     }
 
     static func showHEAD(relativePath: String, at root: URL) -> String? {
@@ -175,24 +274,66 @@ enum GitService {
         return output
     }
 
+    private static let logFile: URL = {
+        let path = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("quantum_debug.log")
+        // Clear on launch
+        try? "".write(to: path, atomically: true, encoding: .utf8)
+        return path
+    }()
+
+    static func debugLog(_ message: String) {
+        let ts = ISO8601DateFormatter().string(from: Date())
+        let line = "[\(ts)] \(message)\n"
+        if let data = line.data(using: .utf8),
+           let fh = try? FileHandle(forWritingTo: logFile) {
+            fh.seekToEndOfFile()
+            fh.write(data)
+            fh.closeFile()
+        } else {
+            try? line.write(to: logFile, atomically: false, encoding: .utf8)
+        }
+    }
+
     private static func run(_ args: [String], at directory: URL) -> String {
+        runWithStatus(args, at: directory).output
+    }
+
+    private static func runWithStatus(_ args: [String], at directory: URL) -> (output: String, exitCode: Int32) {
         let process = Process()
-        let pipe = Pipe()
-        // Use git directly — /usr/bin/env may not find it in GUI apps
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
         let gitPath = FileManager.default.fileExists(atPath: "/usr/bin/git")
             ? "/usr/bin/git" : "/usr/local/bin/git"
         process.executableURL = URL(fileURLWithPath: gitPath)
-        process.arguments = Array(args.dropFirst()) // drop "git" from args
+        process.arguments = Array(args.dropFirst())
         process.currentDirectoryURL = directory
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
         do {
             try process.run()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            // Read both pipes concurrently to avoid deadlock
+            var outData = Data()
+            var errData = Data()
+            let group = DispatchGroup()
+            group.enter()
+            DispatchQueue.global().async {
+                outData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+                group.leave()
+            }
+            group.enter()
+            DispatchQueue.global().async {
+                errData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+                group.leave()
+            }
+            group.wait()
             process.waitUntilExit()
-            return String(data: data, encoding: .utf8) ?? ""
+            let out = String(data: outData, encoding: .utf8) ?? ""
+            let err = String(data: errData, encoding: .utf8) ?? ""
+            let combined = [out, err].filter { !$0.isEmpty }.joined(separator: "\n")
+            debugLog("RUN args=\(args) dir=\(directory.path) exit=\(process.terminationStatus) stdout=[\(out.prefix(200))] stderr=[\(err.prefix(200))]")
+            return (combined, process.terminationStatus)
         } catch {
-            return ""
+            return ("", 1)
         }
     }
 }

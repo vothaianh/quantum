@@ -35,7 +35,7 @@ struct StatusBarView: View {
                 if let tab = state.selectedEditorTab {
                     HStack(spacing: 5) {
                         Circle()
-                            .fill(tab.isModified ? .orange : Theme.termGreen)
+                            .fill(tab.isModified ? Theme.textSecondary : Theme.accent)
                             .frame(width: 7, height: 7)
                         Text(tab.file.name)
                             .font(.system(size: 13))

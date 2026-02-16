@@ -11,15 +11,20 @@ struct SidebarView: View {
                 Spacer()
                 SidebarTabIcon(icon: "doc.on.doc", tab: .files, selected: state.sidebarTab)
                     .onTapGesture { state.sidebarTab = .files }
+                    .help("Explorer")
                 SidebarTabIcon(icon: "magnifyingglass", tab: .search, selected: state.sidebarTab)
                     .onTapGesture { state.sidebarTab = .search }
+                    .help("Search (\u{2318}F)")
                 SidebarTabIcon(icon: "arrow.triangle.branch", tab: .git, selected: state.sidebarTab)
                     .onTapGesture {
                         state.sidebarTab = .git
+                        state.updateActiveGitContext()
                         state.refreshGit()
                     }
+                    .help("Source Control")
                 SidebarTabIcon(icon: "square.grid.2x2", tab: .projects, selected: state.sidebarTab)
                     .onTapGesture { state.sidebarTab = .projects }
+                    .help("Projects")
                 Spacer()
             }
             .padding(.vertical, 10)
@@ -120,6 +125,7 @@ private struct ProjectsPanel: View {
                             .cornerRadius(6)
                     }
                     .buttonStyle(.borderless)
+                    .help("Add a project folder")
                     Spacer()
                 }
                 .frame(maxWidth: .infinity)
@@ -186,26 +192,36 @@ private struct ProjectRow: View {
 
             VStack(alignment: .leading, spacing: 1) {
                 if isRenaming {
-                    TextField("Name", text: $renameText)
-                        .textFieldStyle(.plain)
-                        .font(.zoomed(size: 11, zoom: zoom, weight: .medium))
-                        .foregroundStyle(Theme.textPrimary)
-                        .focused($isFocused)
-                        .onSubmit { onCommitRename() }
-                        .onExitCommand { onCancelRename() }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(Theme.bg)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 4)
-                                .stroke(Theme.accent, lineWidth: 1.5)
-                        )
-                        .cornerRadius(4)
-                        .onAppear {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                                isFocused = true
-                            }
+                    HStack(spacing: 4) {
+                        TextField("Name", text: $renameText)
+                            .textFieldStyle(.plain)
+                            .font(.zoomed(size: 11, zoom: zoom, weight: .medium))
+                            .foregroundStyle(Theme.textPrimary)
+                            .focused($isFocused)
+                            .onSubmit { onCommitRename() }
+                            .onExitCommand { onCancelRename() }
+                        Button {
+                            onCancelRename()
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(Theme.textMuted)
                         }
+                        .buttonStyle(.borderless)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Theme.bg)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(Theme.accent, lineWidth: 1.5)
+                    )
+                    .cornerRadius(4)
+                    .onAppear {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            isFocused = true
+                        }
+                    }
                 } else {
                     Text(state.displayName(for: url))
                         .font(.zoomed(size: 11, zoom: zoom, weight: .medium))
@@ -252,9 +268,9 @@ private struct ProjectRow: View {
                 } label: {
                     Image(systemName: "trash")
                         .font(.system(size: 11))
-                        .foregroundStyle(.red.opacity(0.7))
+                        .foregroundStyle(Theme.danger.opacity(0.7))
                         .frame(width: 26, height: 26)
-                        .background(Color.red.opacity(0.1))
+                        .background(Theme.danger.opacity(0.1))
                         .cornerRadius(5)
                 }
                 .buttonStyle(.borderless)
@@ -282,6 +298,10 @@ private struct ProjectRow: View {
 private struct FileTreePanel: View {
     @Bindable var state: AppState
     @Environment(\.fontZoom) private var zoom
+    @State private var isCreatingFile = false
+    @State private var isCreatingFolder = false
+    @State private var newItemName = ""
+    @FocusState private var newItemFocused: Bool
 
     var body: some View {
         if let root = state.rootFileItem {
@@ -302,6 +322,47 @@ private struct FileTreePanel: View {
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
+                    if isCreatingFile || isCreatingFolder {
+                        HStack(spacing: 4) {
+                            Image(systemName: isCreatingFolder ? "folder.fill" : "doc")
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 16 * zoom, height: 16 * zoom)
+                                .foregroundStyle(isCreatingFolder ? Theme.folderBlue : Theme.textMuted)
+                            HStack(spacing: 2) {
+                                TextField(isCreatingFolder ? "Folder name" : "File name", text: $newItemName)
+                                    .textFieldStyle(.plain)
+                                    .font(.zoomed(size: 12, zoom: zoom))
+                                    .foregroundStyle(Theme.textPrimary)
+                                    .focused($newItemFocused)
+                                    .onSubmit { commitNewItem() }
+                                    .onExitCommand { cancelNewItem() }
+                                Button { cancelNewItem() } label: {
+                                    Image(systemName: "xmark")
+                                        .font(.zoomed(size: 8, zoom: zoom, weight: .bold))
+                                        .foregroundStyle(Theme.textMuted)
+                                }
+                                .buttonStyle(.borderless)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Theme.bg)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 5)
+                                    .stroke(Theme.accent, lineWidth: 1.5)
+                            )
+                            .cornerRadius(5)
+                            .onAppear {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                    newItemFocused = true
+                                }
+                            }
+                        }
+                        .padding(.leading, 8)
+                        .padding(.vertical, 6)
+                        .padding(.trailing, 8)
+                    }
+
                     if let children = root.children {
                         ForEach(children) { item in
                             FileTreeRow(item: item, state: state, depth: 0)
@@ -309,6 +370,23 @@ private struct FileTreePanel: View {
                     }
                 }
                 .padding(.vertical, 4)
+            }
+            .contentShape(Rectangle())
+            .contextMenu {
+                Button {
+                    newItemName = ""
+                    isCreatingFile = true
+                    isCreatingFolder = false
+                } label: {
+                    Label("New File", systemImage: "doc.badge.plus")
+                }
+                Button {
+                    newItemName = ""
+                    isCreatingFolder = true
+                    isCreatingFile = false
+                } label: {
+                    Label("New Folder", systemImage: "folder.badge.plus")
+                }
             }
         } else {
             VStack(spacing: 12) {
@@ -323,6 +401,36 @@ private struct FileTreePanel: View {
             }
             .frame(maxWidth: .infinity)
         }
+    }
+
+    private func commitNewItem() {
+        let name = newItemName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, let root = state.rootFileItem else { cancelNewItem(); return }
+        let newURL = root.url.appendingPathComponent(name)
+        do {
+            if isCreatingFolder {
+                try FileManager.default.createDirectory(at: newURL, withIntermediateDirectories: false)
+            } else {
+                FileManager.default.createFile(atPath: newURL.path, contents: nil)
+            }
+            if let projectURL = state.projectURL {
+                Task.detached {
+                    let tree = FileService.loadDirectory(at: projectURL)
+                    await MainActor.run { state.rootFileItem = tree }
+                }
+            }
+            if !isCreatingFolder {
+                let file = FileItem(name: name, url: newURL, isDirectory: false, children: nil)
+                state.openFile(file)
+            }
+        } catch {}
+        cancelNewItem()
+    }
+
+    private func cancelNewItem() {
+        isCreatingFile = false
+        isCreatingFolder = false
+        newItemName = ""
     }
 }
 
@@ -366,6 +474,7 @@ private struct SearchPanel: View {
                             .foregroundStyle(Theme.textMuted)
                     }
                     .buttonStyle(.borderless)
+                    .help("Clear Search")
                 }
             }
             .padding(.horizontal, 8)
@@ -400,42 +509,165 @@ private struct SearchPanel: View {
                     Spacer()
                 }
                 .frame(maxWidth: .infinity)
+            } else if state.searchQuery.isEmpty {
+                VStack(spacing: 8) {
+                    Spacer()
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 32))
+                        .foregroundStyle(Theme.textMuted.opacity(0.4))
+                    Text("Press \u{2318}F to search across your files")
+                        .font(.zoomed(size: 14, zoom: zoom))
+                        .foregroundStyle(Theme.textMuted)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity)
             } else {
+                // Group results by file
+                let grouped = Dictionary(grouping: state.searchResults, by: \.fileURL)
+                let sortedFiles = grouped.keys.sorted { $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedAscending }
+
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(state.searchResults) { result in
-                            SearchResultRow(result: result, state: state)
+                        // Result count
+                        HStack {
+                            Text("\(state.searchResults.count) result\(state.searchResults.count == 1 ? "" : "s") in \(sortedFiles.count) file\(sortedFiles.count == 1 ? "" : "s")")
+                                .font(.zoomed(size: 10, zoom: zoom))
+                                .foregroundStyle(Theme.textMuted)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+
+                        ForEach(sortedFiles, id: \.self) { fileURL in
+                            if let results = grouped[fileURL] {
+                                SearchFileGroup(
+                                    fileURL: fileURL,
+                                    results: results,
+                                    state: state,
+                                    query: state.searchQuery
+                                )
+                            }
                         }
                     }
-                    .padding(.vertical, 4)
                 }
             }
         }
-        .onAppear { isFocused = true }
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                isFocused = true
+            }
+        }
         .onChange(of: state.searchQuery) {
             state.performSearch()
         }
     }
 }
 
-private struct SearchResultRow: View {
+// MARK: - Search File Group
+
+private struct SearchFileGroup: View {
+    let fileURL: URL
+    let results: [SearchResult]
+    @Bindable var state: AppState
+    let query: String
+    @Environment(\.fontZoom) private var zoom
+    @State private var isExpanded = true
+    @State private var isHovered = false
+
+    private var relativePath: String {
+        guard let root = state.projectURL else { return "" }
+        let rootPath = root.path.hasSuffix("/") ? root.path : root.path + "/"
+        let dir = fileURL.deletingLastPathComponent().path
+        if dir.hasPrefix(rootPath) {
+            let rel = String(dir.dropFirst(rootPath.count))
+            return rel.isEmpty ? "" : rel
+        }
+        return ""
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // File header
+            HStack(spacing: 6) {
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(Theme.textMuted)
+                    .frame(width: 10)
+
+                let item = FileItem(name: fileURL.lastPathComponent, url: fileURL, isDirectory: false, children: nil)
+                Image(nsImage: FileIconResolver.icon(for: item))
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 14 * zoom, height: 14 * zoom)
+
+                Text(fileURL.lastPathComponent)
+                    .font(.zoomed(size: 11, zoom: zoom, weight: .semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1)
+
+                if !relativePath.isEmpty {
+                    Text(relativePath)
+                        .font(.zoomed(size: 10, zoom: zoom))
+                        .foregroundStyle(Theme.textMuted)
+                        .lineLimit(1)
+                        .truncationMode(.head)
+                }
+
+                Spacer()
+
+                Text("\(results.count)")
+                    .font(.zoomed(size: 9, zoom: zoom, weight: .medium))
+                    .foregroundStyle(Theme.textMuted)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(Color.white.opacity(0.06))
+                    .cornerRadius(8)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(isHovered ? Theme.bgHover : .clear)
+            .contentShape(Rectangle())
+            .onHover { isHovered = $0 }
+            .onTapGesture {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    isExpanded.toggle()
+                }
+            }
+
+            // Match lines
+            if isExpanded {
+                ForEach(results) { result in
+                    SearchMatchRow(result: result, query: query, state: state)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Search Match Row
+
+private struct SearchMatchRow: View {
     let result: SearchResult
+    let query: String
     @Bindable var state: AppState
     @Environment(\.fontZoom) private var zoom
     @State private var isHovered = false
 
     private var highlightedLine: AttributedString {
         let trimmed = result.lineContent.trimmingCharacters(in: .whitespaces)
-        let query = state.searchQuery.lowercased()
+        let q = query.lowercased()
         var attributed = AttributedString(trimmed)
-        attributed.foregroundColor = Color(nsColor: .init(srgbRed: 0.478, green: 0.514, blue: 0.576, alpha: 1))
+        attributed.font = .system(size: 11 * state.zoomLevel, design: .monospaced)
+        attributed.foregroundColor = Color(nsColor: .init(srgbRed: 0.467, green: 0.467, blue: 0.467, alpha: 1))
 
         let lower = trimmed.lowercased()
         var searchStart = lower.startIndex
-        while let range = lower.range(of: query, range: searchStart..<lower.endIndex) {
+        while let range = lower.range(of: q, range: searchStart..<lower.endIndex) {
             if let attrRange = Range(range, in: attributed) {
-                attributed[attrRange].foregroundColor = Color(nsColor: .init(srgbRed: 0.322, green: 0.557, blue: 0.918, alpha: 1))
-                attributed[attrRange].backgroundColor = Color(nsColor: .init(srgbRed: 0.322, green: 0.557, blue: 0.918, alpha: 0.2))
+                attributed[attrRange].foregroundColor = Color(nsColor: .init(srgbRed: 0.0, green: 0.863, blue: 0.510, alpha: 1))
+                attributed[attrRange].backgroundColor = Color(nsColor: .init(srgbRed: 0.0, green: 0.863, blue: 0.510, alpha: 0.15))
+                attributed[attrRange].font = .system(size: 11 * state.zoomLevel, weight: .bold, design: .monospaced)
             }
             searchStart = range.upperBound
         }
@@ -443,29 +675,28 @@ private struct SearchResultRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 4) {
-                Text(result.fileName)
-                    .font(.zoomed(size: 11, zoom: zoom, weight: .medium))
-                    .foregroundStyle(Theme.textPrimary)
-                    .lineLimit(1)
-                Text(":\(result.lineNumber)")
-                    .font(.zoomed(size: 10, zoom: zoom))
-                    .foregroundStyle(Theme.textMuted)
-                Spacer()
-            }
+        HStack(spacing: 0) {
+            // Line number gutter
+            Text("\(result.lineNumber)")
+                .font(.zoomed(size: 10, zoom: state.zoomLevel, design: .monospaced))
+                .foregroundStyle(Theme.textMuted.opacity(0.6))
+                .frame(width: 36, alignment: .trailing)
+                .padding(.trailing, 8)
+
+            // Code line with highlighted keyword
             Text(highlightedLine)
-                .font(.zoomed(size: 11, zoom: zoom, design: .monospaced))
                 .lineLimit(1)
+                .truncationMode(.tail)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 4)
-        .background(isHovered ? Theme.bgHover : .clear)
+        .padding(.leading, 24)
+        .padding(.trailing, 8)
+        .padding(.vertical, 3)
+        .background(isHovered ? Theme.accent.opacity(0.08) : .clear)
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
         .onTapGesture {
             let file = FileItem(name: result.fileName, url: result.fileURL, isDirectory: false, children: nil)
-            state.openFileAtLine(file, line: result.lineNumber, query: state.searchQuery)
+            state.openFileAtLine(file, line: result.lineNumber, query: query)
         }
     }
 }
@@ -475,10 +706,8 @@ private struct SearchResultRow: View {
 private struct GitPanel: View {
     @Bindable var state: AppState
     @Environment(\.fontZoom) private var zoom
-
-    private var totalChanges: Int {
-        state.gitRepos.reduce(0) { $0 + $1.files.count }
-    }
+    @State private var showChanges = true
+    @State private var showLog = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -488,6 +717,7 @@ private struct GitPanel: View {
                     .font(.zoomed(size: 10, zoom: zoom, weight: .semibold))
                     .foregroundStyle(Theme.textMuted)
                 Spacer()
+
                 Button {
                     state.refreshGit()
                 } label: {
@@ -496,9 +726,16 @@ private struct GitPanel: View {
                         .foregroundStyle(Theme.textMuted)
                 }
                 .buttonStyle(.borderless)
+                .help("Refresh")
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
+            .onChange(of: state.selectedEditorTabID) {
+                state.updateActiveGitContext()
+            }
+            .onAppear {
+                state.updateActiveGitContext()
+            }
 
             Rectangle()
                 .fill(Theme.border)
@@ -512,7 +749,7 @@ private struct GitPanel: View {
                             .textFieldStyle(.plain)
                             .font(.zoomed(size: 11, zoom: zoom))
                             .foregroundStyle(Theme.textPrimary)
-                            .lineLimit(1...3)
+                            .lineLimit(1...4)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 6)
                             .background(Theme.bg)
@@ -543,7 +780,7 @@ private struct GitPanel: View {
                         state.commitChanges()
                     } label: {
                         HStack(spacing: 6) {
-                            if state.isCommitting {
+                            if state.isCommitting || state.isPushing {
                                 ProgressView()
                                     .scaleEffect(0.5)
                                     .frame(width: 12, height: 12)
@@ -551,71 +788,379 @@ private struct GitPanel: View {
                                 Image(systemName: "checkmark.circle.fill")
                                     .font(.system(size: 11))
                             }
-                            Text("Commit")
+                            Text(state.isCommitting ? "Committing..." : state.isPushing ? "Pushing..." : "Commit & Push")
                                 .font(.zoomed(size: 11, zoom: zoom, weight: .semibold))
                         }
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
                         .background(
-                            state.commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || state.isCommitting
+                            state.commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || state.isCommitting || state.isPushing
                                 ? Theme.accent.opacity(0.4)
                                 : Theme.accent
                         )
                         .cornerRadius(6)
                     }
                     .buttonStyle(.borderless)
-                    .disabled(state.commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || state.isCommitting)
+                    .disabled(state.commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || state.isCommitting || state.isPushing)
+                    .help("Commit all changes and push to remote")
 
                     if let error = state.commitError {
-                        Text(error)
-                            .font(.zoomed(size: 10, zoom: zoom))
-                            .foregroundStyle(.red)
-                            .lineLimit(2)
+                        HStack(spacing: 4) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 10))
+                                .foregroundStyle(Theme.danger)
+                            Text(error)
+                                .font(.zoomed(size: 10, zoom: zoom))
+                                .foregroundStyle(Theme.danger)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                            Spacer()
+                            Button {
+                                state.showGitErrorPopup = true
+                            } label: {
+                                Text("Details")
+                                    .font(.zoomed(size: 10, zoom: zoom, weight: .medium))
+                                    .foregroundStyle(Theme.accent)
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Show full error details")
+                        }
                     }
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 8)
+                .alert("Git Error", isPresented: $state.showGitErrorPopup) {
+                    Button("OK", role: .cancel) {}
+                } message: {
+                    Text(state.gitErrorDetail)
+                }
 
                 Rectangle()
                     .fill(Theme.border)
                     .frame(height: 1)
             }
 
-            // Status
-            if state.isLoadingGit {
-                VStack(spacing: 8) {
-                    Spacer()
-                    ProgressView()
-                        .scaleEffect(0.7)
-                    Text("Loading...")
-                        .font(.zoomed(size: 11, zoom: zoom))
-                        .foregroundStyle(Theme.textMuted)
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity)
-            } else if state.gitRepos.isEmpty {
-                VStack(spacing: 8) {
-                    Spacer()
-                    Image(systemName: "checkmark.circle")
-                        .font(.system(size: 24))
-                        .foregroundStyle(Theme.termGreen)
-                    Text("No changes")
-                        .font(.zoomed(size: 12, zoom: zoom))
-                        .foregroundStyle(Theme.textMuted)
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity)
-            } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(state.gitRepos) { repo in
-                            GitRepoSection(repo: repo, state: state)
+            // Scrollable content: changes (top) + log (bottom 50%)
+            GeometryReader { geo in
+                VStack(spacing: 0) {
+                    // MARK: Changes section
+                    VStack(spacing: 0) {
+                        GitSectionHeader(
+                            title: "CHANGES",
+                            count: state.gitRepos.reduce(0) { $0 + $1.files.count },
+                            isExpanded: $showChanges
+                        )
+
+                        if showChanges {
+                            ScrollView {
+                                LazyVStack(alignment: .leading, spacing: 0) {
+                                    if state.isLoadingGit {
+                                        HStack {
+                                            Spacer()
+                                            ProgressView()
+                                                .scaleEffect(0.6)
+                                                .padding(.vertical, 12)
+                                            Spacer()
+                                        }
+                                    } else if state.gitRepos.isEmpty {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: "checkmark.circle")
+                                                .font(.system(size: 11))
+                                                .foregroundStyle(Theme.termGreen)
+                                            Text("No changes")
+                                                .font(.zoomed(size: 11, zoom: zoom))
+                                                .foregroundStyle(Theme.textMuted)
+                                        }
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                    } else {
+                                        ForEach(state.gitRepos) { repo in
+                                            GitRepoSection(repo: repo, state: state)
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
+                    .frame(maxHeight: showLog ? geo.size.height * 0.5 : .infinity)
+
+                    Rectangle()
+                        .fill(Theme.border)
+                        .frame(height: 1)
+
+                    // MARK: Git Log section
+                    VStack(spacing: 0) {
+                        GitLogSectionHeader(
+                            title: "COMMIT LOG",
+                            isExpanded: $showLog,
+                            state: state
+                        )
+
+                        if showLog {
+                            ScrollView {
+                                LazyVStack(alignment: .leading, spacing: 0) {
+                                    if state.isLoadingGitLog {
+                                        HStack {
+                                            Spacer()
+                                            ProgressView()
+                                                .scaleEffect(0.6)
+                                                .padding(.vertical, 12)
+                                            Spacer()
+                                        }
+                                    } else if state.gitCommits.isEmpty && state.unpulledCommits.isEmpty {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: "clock")
+                                                .font(.system(size: 11))
+                                                .foregroundStyle(Theme.textMuted)
+                                            Text("No commits")
+                                                .font(.zoomed(size: 11, zoom: zoom))
+                                                .foregroundStyle(Theme.textMuted)
+                                        }
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 8)
+                                    } else {
+                                        // Unpulled commits from remote
+                                        if !state.unpulledCommits.isEmpty {
+                                            HStack(spacing: 5) {
+                                                Image(systemName: "arrow.down.circle.fill")
+                                                    .font(.system(size: 9))
+                                                    .foregroundStyle(Theme.accent)
+                                                Text("\(state.unpulledCommits.count) incoming")
+                                                    .font(.zoomed(size: 9, zoom: zoom, weight: .semibold))
+                                                    .foregroundStyle(Theme.accent)
+                                                Spacer()
+                                            }
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 4)
+
+                                            ForEach(state.unpulledCommits) { commit in
+                                                GitCommitRow(commit: commit)
+                                            }
+
+                                            Rectangle()
+                                                .fill(Theme.border)
+                                                .frame(height: 1)
+                                                .padding(.vertical, 2)
+                                        }
+
+                                        // Local commits
+                                        ForEach(state.gitCommits) { commit in
+                                            GitCommitRow(commit: commit)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .frame(maxHeight: showChanges ? geo.size.height * 0.5 : .infinity)
                 }
             }
         }
+    }
+}
+
+// MARK: - Section Headers
+
+private struct GitSectionHeader: View {
+    let title: String
+    let count: Int
+    @Binding var isExpanded: Bool
+    @Environment(\.fontZoom) private var zoom
+    @State private var isHovered = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(Theme.textMuted)
+                .frame(width: 10)
+
+            Text(title)
+                .font(.zoomed(size: 10, zoom: zoom, weight: .semibold))
+                .foregroundStyle(Theme.textSecondary)
+
+            if count > 0 {
+                Text("\(count)")
+                    .font(.zoomed(size: 9, zoom: zoom, weight: .medium))
+                    .foregroundStyle(Theme.textMuted)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(Color.white.opacity(0.06))
+                    .cornerRadius(8)
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(isHovered ? Theme.bgHover : Theme.bgHeader)
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
+        .onTapGesture {
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isExpanded.toggle()
+            }
+        }
+    }
+}
+
+private struct GitLogSectionHeader: View {
+    let title: String
+    @Binding var isExpanded: Bool
+    @Bindable var state: AppState
+    @Environment(\.fontZoom) private var zoom
+    @State private var isHovered = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundStyle(Theme.textMuted)
+                .frame(width: 10)
+
+            Text(title)
+                .font(.zoomed(size: 10, zoom: zoom, weight: .semibold))
+                .foregroundStyle(Theme.textSecondary)
+
+            if !state.activeGitBranch.isEmpty {
+                HStack(spacing: 3) {
+                    Image(systemName: "arrow.triangle.branch")
+                        .font(.system(size: 8))
+                    Text(state.activeGitBranch)
+                        .font(.zoomed(size: 9, zoom: zoom))
+                        .lineLimit(1)
+                }
+                .foregroundStyle(Theme.textMuted)
+            }
+
+            Spacer()
+
+            // Pull button with badge
+            Button {
+                state.pullChanges()
+            } label: {
+                if state.isPulling {
+                    ProgressView()
+                        .scaleEffect(0.4)
+                        .frame(width: 9, height: 9)
+                } else {
+                    Image(systemName: "arrow.down.to.line")
+                        .font(.system(size: 9, weight: .semibold))
+                }
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.white)
+            .frame(width: 22, height: 22)
+            .background(Theme.accent)
+            .clipShape(Circle())
+            .disabled(state.isPulling)
+            .help(state.unpulledCommits.isEmpty ? "Pull (Rebase)" : "Pull \(state.unpulledCommits.count) commit\(state.unpulledCommits.count == 1 ? "" : "s")")
+            .overlay(alignment: .topTrailing) {
+                if !state.unpulledCommits.isEmpty {
+                    Text("\(state.unpulledCommits.count)")
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 3)
+                        .padding(.vertical, 1)
+                        .background(Color(nsColor: .init(srgbRed: 0.510, green: 0.667, blue: 1.0, alpha: 1)))
+                        .clipShape(Capsule())
+                        .offset(x: 5, y: -5)
+                }
+            }
+
+            // Push button
+            Button {
+                state.pushChanges()
+            } label: {
+                if state.isPushing {
+                    ProgressView()
+                        .scaleEffect(0.4)
+                        .frame(width: 9, height: 9)
+                } else {
+                    Image(systemName: "arrow.up.to.line")
+                        .font(.system(size: 9, weight: .semibold))
+                }
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.white)
+            .frame(width: 22, height: 22)
+            .background(Theme.accent)
+            .clipShape(Circle())
+            .disabled(state.isPushing)
+            .help("Push")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(isHovered ? Theme.bgHover : Theme.bgHeader)
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
+        .onTapGesture {
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isExpanded.toggle()
+            }
+        }
+    }
+}
+
+// MARK: - Git Commit Row
+
+private struct GitCommitRow: View {
+    let commit: GitCommitLog
+    @Environment(\.fontZoom) private var zoom
+    @State private var isHovered = false
+
+    private var hashColor: Color {
+        commit.isRemoteOnly ? Color(nsColor: .init(srgbRed: 0.510, green: 0.667, blue: 1.0, alpha: 1)) : Theme.accent
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            // Commit message
+            HStack(spacing: 5) {
+                if commit.isRemoteOnly {
+                    Image(systemName: "arrow.down")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(hashColor)
+                }
+                Text(commit.message)
+                    .font(.zoomed(size: 11, zoom: zoom))
+                    .foregroundStyle(commit.isRemoteOnly ? Theme.textSecondary : Theme.textPrimary)
+                    .lineLimit(1)
+            }
+
+            // Author and date
+            HStack(spacing: 4) {
+                // Hash badge
+                Text(commit.id)
+                    .font(.zoomed(size: 9, zoom: zoom, weight: .medium, design: .monospaced))
+                    .foregroundStyle(hashColor)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(hashColor.opacity(0.1))
+                    .cornerRadius(3)
+
+                Text(commit.author)
+                    .font(.zoomed(size: 10, zoom: zoom))
+                    .foregroundStyle(commit.isRemoteOnly ? Theme.textMuted : Theme.textSecondary)
+                    .lineLimit(1)
+
+                Spacer()
+
+                Text(commit.relativeDate)
+                    .font(.zoomed(size: 10, zoom: zoom))
+                    .foregroundStyle(Theme.textMuted)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 5)
+        .background(
+            commit.isRemoteOnly
+                ? (isHovered ? hashColor.opacity(0.08) : hashColor.opacity(0.03))
+                : (isHovered ? Theme.bgHover : .clear)
+        )
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
     }
 }
 
@@ -624,6 +1169,7 @@ private struct GitRepoSection: View {
     @Bindable var state: AppState
     @Environment(\.fontZoom) private var zoom
     @State private var isExpanded = true
+    @State private var showDiscardAllConfirm = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -652,6 +1198,24 @@ private struct GitRepoSection: View {
                     .cornerRadius(4)
 
                 Spacer()
+
+                Button {
+                    showDiscardAllConfirm = true
+                } label: {
+                    Image(systemName: "arrow.uturn.backward")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 20, height: 20)
+                        .background(Theme.accent)
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.borderless)
+                .help("Discard All Changes")
+                .confirmationDialog("Discard all changes?", isPresented: $showDiscardAllConfirm) {
+                    Button("Discard All", role: .destructive) {
+                        state.discardAllChanges()
+                    }
+                }
 
                 Image(systemName: "arrow.triangle.branch")
                     .font(.system(size: 9))
@@ -685,14 +1249,15 @@ private struct GitFileRow: View {
     @Bindable var state: AppState
     @Environment(\.fontZoom) private var zoom
     @State private var isHovered = false
+    @State private var showDiscardConfirm = false
 
     private var statusColor: Color {
         switch file.status {
-        case .modified: return .orange
-        case .added, .untracked: return Theme.termGreen
-        case .deleted: return .red
-        case .renamed: return Theme.folderBlue
-        case .conflicted: return .red
+        case .modified: return Theme.textPrimary
+        case .added, .untracked: return Theme.accent
+        case .deleted: return Theme.danger
+        case .renamed: return Theme.textSecondary
+        case .conflicted: return Theme.danger
         }
     }
 
@@ -713,17 +1278,38 @@ private struct GitFileRow: View {
                 .lineLimit(1)
                 .truncationMode(.head)
             Spacer()
+
+            if isHovered || showDiscardConfirm {
+                Button {
+                    showDiscardConfirm = true
+                } label: {
+                    Image(systemName: "arrow.uturn.backward")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 18, height: 18)
+                        .background(Theme.accent)
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.borderless)
+                .help("Discard Changes")
+            }
+
             Text(file.status.label)
                 .font(.zoomed(size: 10, zoom: zoom, weight: .bold, design: .monospaced))
                 .foregroundStyle(statusColor)
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
         .background(isHovered ? Theme.bgHover : .clear)
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
         .onTapGesture {
             state.openDiffFile(file)
+        }
+        .confirmationDialog("Discard changes to \(file.path)?", isPresented: $showDiscardConfirm) {
+            Button("Discard", role: .destructive) {
+                state.discardFile(file)
+            }
         }
     }
 }
@@ -736,12 +1322,20 @@ private struct FileTreeRow: View {
     let depth: Int
 
     @Environment(\.fontZoom) private var zoom
-    @State private var isExpanded = false
     @State private var isHovered = false
+
+    private var isExpanded: Bool {
+        state.isFolderExpanded(item.url.path)
+    }
+
     @State private var isRenaming = false
     @State private var renameText = ""
     @State private var showDeleteConfirm = false
+    @State private var isCreatingFile = false
+    @State private var isCreatingFolder = false
+    @State private var newItemName = ""
     @FocusState private var renameFocused: Bool
+    @FocusState private var newItemFocused: Bool
 
     private var isSelected: Bool {
         state.selectedFile?.id == item.id
@@ -766,26 +1360,34 @@ private struct FileTreeRow: View {
                     .frame(width: 16 * zoom, height: 16 * zoom)
 
                 if isRenaming {
-                    TextField("Name", text: $renameText)
-                        .textFieldStyle(.plain)
-                        .font(.zoomed(size: 12, zoom: zoom))
-                        .foregroundStyle(Theme.textPrimary)
-                        .focused($renameFocused)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 2)
-                        .background(Theme.bg)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 3)
-                                .stroke(Theme.accent, lineWidth: 1.5)
-                        )
-                        .cornerRadius(3)
-                        .onSubmit { commitRename() }
-                        .onExitCommand { cancelRename() }
-                        .onAppear {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                                renameFocused = true
+                    HStack(spacing: 2) {
+                        TextField("Name", text: $renameText)
+                            .textFieldStyle(.plain)
+                            .font(.zoomed(size: 12, zoom: zoom))
+                            .foregroundStyle(Theme.textPrimary)
+                            .focused($renameFocused)
+                            .onSubmit { commitRename() }
+                            .onExitCommand { cancelRename() }
+                            .onAppear {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                    renameFocused = true
+                                }
                             }
+                        Button { cancelRename() } label: {
+                            Image(systemName: "xmark")
+                                .font(.zoomed(size: 8, zoom: zoom, weight: .bold))
+                                .foregroundStyle(Theme.textMuted)
                         }
+                        .buttonStyle(.borderless)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Theme.bg)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5)
+                            .stroke(Theme.accent, lineWidth: 1.5)
+                    )
+                    .cornerRadius(5)
                 } else {
                     Text(item.name)
                         .font(.zoomed(size: 12, zoom: zoom))
@@ -810,13 +1412,24 @@ private struct FileTreeRow: View {
                 guard !isRenaming else { return }
                 if item.isDirectory {
                     withAnimation(.easeInOut(duration: 0.15)) {
-                        isExpanded.toggle()
+                        state.toggleFolder(item.url.path)
                     }
                 } else {
                     state.openFile(item)
                 }
             }
             .contextMenu {
+                Button {
+                    startNewFile()
+                } label: {
+                    Label("New File", systemImage: "doc.badge.plus")
+                }
+                Button {
+                    startNewFolder()
+                } label: {
+                    Label("New Folder", systemImage: "folder.badge.plus")
+                }
+                Divider()
                 Button {
                     NSWorkspace.shared.activateFileViewerSelecting([item.url])
                 } label: {
@@ -841,6 +1454,47 @@ private struct FileTreeRow: View {
                 Text(item.isDirectory
                      ? "This folder and all its contents will be moved to Trash."
                      : "This file will be moved to Trash.")
+            }
+
+            if isCreatingFile || isCreatingFolder {
+                HStack(spacing: 4) {
+                    Image(systemName: isCreatingFolder ? "folder.fill" : "doc")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 16 * zoom, height: 16 * zoom)
+                        .foregroundStyle(isCreatingFolder ? Theme.folderBlue : Theme.textMuted)
+                    HStack(spacing: 2) {
+                        TextField(isCreatingFolder ? "Folder name" : "File name", text: $newItemName)
+                            .textFieldStyle(.plain)
+                            .font(.zoomed(size: 12, zoom: zoom))
+                            .foregroundStyle(Theme.textPrimary)
+                            .focused($newItemFocused)
+                            .onSubmit { commitNewItem() }
+                            .onExitCommand { cancelNewItem() }
+                        Button { cancelNewItem() } label: {
+                            Image(systemName: "xmark")
+                                .font(.zoomed(size: 8, zoom: zoom, weight: .bold))
+                                .foregroundStyle(Theme.textMuted)
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Theme.bg)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5)
+                            .stroke(Theme.accent, lineWidth: 1.5)
+                    )
+                    .cornerRadius(5)
+                    .onAppear {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                newItemFocused = true
+                            }
+                        }
+                }
+                .padding(.leading, CGFloat(item.isDirectory ? depth + 1 : depth) * 16 + 8)
+                .padding(.vertical, 6)
+                .padding(.trailing, 8)
             }
 
             if item.isDirectory && isExpanded, let children = item.children {
@@ -885,6 +1539,60 @@ private struct FileTreeRow: View {
 
     private func cancelRename() {
         isRenaming = false
+    }
+
+    private var parentDir: URL {
+        item.isDirectory ? item.url : item.url.deletingLastPathComponent()
+    }
+
+    private func startNewFile() {
+        if item.isDirectory && !isExpanded { state.toggleFolder(item.url.path) }
+        newItemName = ""
+        isCreatingFile = true
+        isCreatingFolder = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { newItemFocused = true }
+    }
+
+    private func startNewFolder() {
+        if item.isDirectory && !isExpanded { state.toggleFolder(item.url.path) }
+        newItemName = ""
+        isCreatingFolder = true
+        isCreatingFile = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { newItemFocused = true }
+    }
+
+    private func commitNewItem() {
+        let name = newItemName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { cancelNewItem(); return }
+        let newURL = parentDir.appendingPathComponent(name)
+        do {
+            if isCreatingFolder {
+                try FileManager.default.createDirectory(at: newURL, withIntermediateDirectories: false)
+            } else {
+                FileManager.default.createFile(atPath: newURL.path, contents: nil)
+            }
+            // Reload file tree
+            if let root = state.projectURL {
+                Task.detached {
+                    let tree = FileService.loadDirectory(at: root)
+                    await MainActor.run { state.rootFileItem = tree }
+                }
+            }
+            // Open the new file
+            if !isCreatingFolder {
+                let file = FileItem(name: name, url: newURL, isDirectory: false, children: nil)
+                state.openFile(file)
+            }
+        } catch {
+            // Creation failed
+        }
+        cancelNewItem()
+    }
+
+    private func cancelNewItem() {
+        isCreatingFile = false
+        isCreatingFolder = false
+        newItemName = ""
     }
 
     private func deleteItem() {

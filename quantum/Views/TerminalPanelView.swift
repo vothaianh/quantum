@@ -33,6 +33,7 @@ struct TerminalPanelView: View {
                 }
                 .buttonStyle(.borderless)
                 .padding(.horizontal, 8)
+                .help("New Terminal")
             }
             .padding(.vertical, 4)
             .background(Theme.bgTerminal)
@@ -67,6 +68,7 @@ struct TerminalPanelView: View {
         let tab = TerminalTab(workingDirectory: state.projectURL)
         state.terminalTabs.append(tab)
         state.selectedTerminalTabID = tab.id
+        state.saveSession()
     }
 
     private func closeTab(_ tab: TerminalTab) {
@@ -74,6 +76,7 @@ struct TerminalPanelView: View {
         if state.selectedTerminalTabID == tab.id {
             state.selectedTerminalTabID = state.terminalTabs.last?.id
         }
+        state.saveSession()
     }
 }
 
@@ -102,6 +105,7 @@ private struct TerminalTabButton: View {
             }
             .buttonStyle(.borderless)
             .opacity(isHovered || isSelected ? 1 : 0)
+            .help("Close Terminal")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)

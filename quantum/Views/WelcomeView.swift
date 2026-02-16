@@ -97,6 +97,7 @@ struct WelcomeView: View {
                 }
                 .buttonStyle(.plain)
                 .onHover { buttonHovered = $0 }
+                .help("Open a project folder (\u{2318}O)")
                 .padding(.top, 28)
                 .opacity(appeared ? 1 : 0)
                 .offset(y: appeared ? 0 : 6)
@@ -312,6 +313,7 @@ private struct RecentProjectRow: View {
                         .clipShape(Circle())
                 }
                 .buttonStyle(.plain)
+                .help("Remove from recent projects")
                 .transition(.opacity)
             }
         }

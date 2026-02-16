@@ -1,6 +1,10 @@
 import Foundation
 import AppKit
 
+extension Notification.Name {
+    static let fileSaved = Notification.Name("fileSaved")
+}
+
 @Observable
 final class AppState {
     var rootFileItem: FileItem?
@@ -13,6 +17,7 @@ final class AppState {
     var projectURL: URL?
     var zoomLevel: Double = 1.0
     var sidebarTab: SidebarTab = .files
+    var expandedFolders: Set<String> = []
     var searchQuery: String = ""
     var searchResults: [SearchResult] = []
     var isSearching: Bool = false
@@ -22,7 +27,65 @@ final class AppState {
     var commitMessage: String = ""
     var isGeneratingCommitMsg: Bool = false
     var isCommitting: Bool = false
+    var isPushing: Bool = false
+    var isPulling: Bool = false
     var commitError: String?
+    var showGitErrorPopup: Bool = false
+    var gitErrorDetail: String = ""
+    var gitCommits: [GitCommitLog] = []
+    var isLoadingGitLog: Bool = false
+    var activeGitRoot: URL?
+    var activeGitBranch: String = ""
+    var unpulledCommits: [GitCommitLog] = []
+
+    // MARK: - File Save Observer
+
+    private var gitRefreshTimer: Timer?
+    private var gitFetchTimer: Timer?
+
+    func startObservingFileSaves() {
+        NotificationCenter.default.addObserver(
+            forName: .fileSaved, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.scheduleGitRefresh()
+        }
+    }
+
+    func startAutoFetch() {
+        gitFetchTimer?.invalidate()
+        gitFetchTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            self?.backgroundFetch()
+        }
+        // Initial fetch after a short delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            self?.backgroundFetch()
+        }
+    }
+
+    func stopAutoFetch() {
+        gitFetchTimer?.invalidate()
+        gitFetchTimer = nil
+    }
+
+    private func backgroundFetch() {
+        let root = activeGitRoot ?? projectURL
+        guard let root else { return }
+        Task.detached {
+            GitService.fetch(at: root)
+            let unpulled = GitService.unpulledCommits(at: root)
+            await MainActor.run {
+                self.unpulledCommits = unpulled
+            }
+        }
+    }
+
+    private func scheduleGitRefresh() {
+        guard sidebarTab == .git else { return }
+        gitRefreshTimer?.invalidate()
+        gitRefreshTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: false) { [weak self] _ in
+            self?.refreshGit()
+        }
+    }
 
     // MARK: - Search
 
@@ -54,6 +117,46 @@ final class AppState {
                 self.isLoadingGit = false
             }
         }
+        refreshGitLog()
+    }
+
+    func refreshGitLog() {
+        let root = activeGitRoot ?? projectURL
+        guard let root else { return }
+        isLoadingGitLog = true
+        Task.detached {
+            let commits = GitService.log(at: root, count: 50)
+            let unpulled = GitService.unpulledCommits(at: root)
+            await MainActor.run {
+                self.gitCommits = commits
+                self.unpulledCommits = unpulled
+                self.isLoadingGitLog = false
+            }
+        }
+    }
+
+    func updateActiveGitContext() {
+        guard let fileURL = selectedFile?.url else {
+            // No file open — fall back to project root
+            activeGitRoot = projectURL.flatMap { GitService.findGitRoot(from: $0) }
+            activeGitBranch = gitBranch
+            refreshGitLog()
+            return
+        }
+        let dir = fileURL.deletingLastPathComponent()
+        Task.detached {
+            let root = GitService.findGitRoot(from: dir)
+            let branch = root.map { GitService.currentBranch(at: $0) } ?? ""
+            await MainActor.run {
+                let changed = self.activeGitRoot?.path != root?.path
+                self.activeGitRoot = root
+                self.activeGitBranch = branch
+                self.gitBranch = branch
+                if changed {
+                    self.refreshGitLog()
+                }
+            }
+        }
     }
 
     func refreshGitBranchForCurrentFile() {
@@ -63,9 +166,16 @@ final class AppState {
         }
         let dir = fileURL.deletingLastPathComponent()
         Task.detached {
-            let branch = GitService.currentBranch(at: dir)
+            let root = GitService.findGitRoot(from: dir)
+            let branch = root.map { GitService.currentBranch(at: $0) } ?? ""
             await MainActor.run {
                 self.gitBranch = branch
+                let changed = self.activeGitRoot?.path != root?.path
+                self.activeGitRoot = root
+                self.activeGitBranch = branch
+                if changed {
+                    self.refreshGitLog()
+                }
             }
         }
     }
@@ -125,18 +235,133 @@ final class AppState {
             var allOutput = ""
             for root in roots {
                 let result = GitService.commitAll(message: message, at: root)
-                if !result.success { allSuccess = false }
-                if !result.output.isEmpty {
-                    allOutput += "[\(root.lastPathComponent)] \(result.output)\n"
+                if !result.success {
+                    allSuccess = false
+                    if !result.output.isEmpty {
+                        allOutput += "[\(root.lastPathComponent)] \(result.output)\n"
+                    }
+                }
+            }
+            // Push after successful commit
+            if allSuccess {
+                await MainActor.run {
+                    self.isCommitting = false
+                    self.isPushing = true
+                }
+                for root in roots {
+                    let pushResult = GitService.push(at: root)
+                    if !pushResult.success {
+                        allSuccess = false
+                        if !pushResult.output.isEmpty {
+                            allOutput += "[\(root.lastPathComponent)] Push: \(pushResult.output)\n"
+                        }
+                    }
                 }
             }
             await MainActor.run {
                 self.isCommitting = false
+                self.isPushing = false
                 if allSuccess {
                     self.commitMessage = ""
+                    self.commitError = nil
                     self.refreshGit()
                 } else {
-                    self.commitError = allOutput.isEmpty ? "Commit failed" : allOutput
+                    let detail = allOutput.isEmpty ? "Failed" : allOutput
+                    self.commitError = detail.components(separatedBy: "\n").first ?? "Failed"
+                    self.gitErrorDetail = detail
+                    self.showGitErrorPopup = true
+                }
+            }
+        }
+    }
+
+    func discardFile(_ file: GitFileStatus) {
+        guard let repo = gitRepos.first(where: { repo in
+            repo.files.contains(where: { $0.id == file.id })
+        }) else { return }
+        let root = repo.gitRoot
+        let fileURL = file.fullURL
+        Task.detached {
+            GitService.discardFile(file, at: root)
+            await MainActor.run {
+                self.reloadOpenTab(for: fileURL)
+                self.refreshGit()
+            }
+        }
+    }
+
+    func discardAllChanges() {
+        let roots = gitRepos.map(\.gitRoot)
+        let affectedURLs = gitRepos.flatMap { $0.files.map(\.fullURL) }
+        Task.detached {
+            for root in roots {
+                GitService.discardAll(at: root)
+            }
+            await MainActor.run {
+                for url in affectedURLs {
+                    self.reloadOpenTab(for: url)
+                }
+                self.refreshGit()
+            }
+        }
+    }
+
+    private func reloadOpenTab(for fileURL: URL) {
+        for i in openEditorTabs.indices {
+            guard openEditorTabs[i].file.url == fileURL else { continue }
+            let freshContent = FileService.readFile(at: fileURL)
+            if openEditorTabs[i].isDiff {
+                // Close diff tab — file is restored, diff no longer relevant
+                let tabID = openEditorTabs[i].id
+                openEditorTabs.remove(at: i)
+                if selectedEditorTabID == tabID {
+                    selectedEditorTabID = openEditorTabs.last?.id
+                }
+            } else {
+                openEditorTabs[i].content = freshContent
+                openEditorTabs[i].isModified = false
+            }
+            return
+        }
+    }
+
+    func pushChanges() {
+        let root = activeGitRoot ?? gitRepos.first?.gitRoot
+        guard let root else { return }
+        isPushing = true
+        commitError = nil
+        Task.detached {
+            let result = GitService.push(at: root)
+            await MainActor.run {
+                self.isPushing = false
+                if result.success {
+                    self.commitError = nil
+                    self.refreshGitLog()
+                } else {
+                    self.commitError = "Push failed"
+                    self.gitErrorDetail = result.output.isEmpty ? "Push failed" : result.output
+                    self.showGitErrorPopup = true
+                }
+            }
+        }
+    }
+
+    func pullChanges() {
+        let root = activeGitRoot ?? gitRepos.first?.gitRoot
+        guard let root else { return }
+        isPulling = true
+        commitError = nil
+        Task.detached {
+            let result = GitService.pull(at: root)
+            await MainActor.run {
+                self.isPulling = false
+                if result.success {
+                    self.commitError = nil
+                    self.refreshGit()
+                } else {
+                    self.commitError = "Pull failed"
+                    self.gitErrorDetail = result.output.isEmpty ? "Pull failed" : result.output
+                    self.showGitErrorPopup = true
                 }
             }
         }
@@ -184,6 +409,7 @@ final class AppState {
         if let existing = openEditorTabs.first(where: { $0.file.url == file.url }) {
             selectedEditorTabID = existing.id
             refreshGitBranchForCurrentFile()
+            saveSession()
             return
         }
         let content = FileService.readFile(at: file.url)
@@ -191,6 +417,7 @@ final class AppState {
         openEditorTabs.append(tab)
         selectedEditorTabID = tab.id
         refreshGitBranchForCurrentFile()
+        saveSession()
     }
 
     func openFileAtLine(_ file: FileItem, line: Int, query: String?) {
@@ -268,6 +495,7 @@ final class AppState {
         if selectedEditorTabID == tab.id {
             selectedEditorTabID = openEditorTabs.last?.id
         }
+        saveSession()
     }
 
     // MARK: - Terminal Tabs
@@ -363,6 +591,7 @@ final class AppState {
     }
 
     func openProject(at url: URL) {
+        saveSession() // Save current project state before switching
         terminalTabs.removeAll()
         openEditorTabs.removeAll()
         selectedEditorTabID = nil
@@ -389,5 +618,108 @@ final class AppState {
         }
 
         refreshGit()
+        startAutoFetch()
+
+        // Restore saved session state after tree loads
+        restoreSession()
+    }
+
+    // MARK: - Session Persistence
+
+    private var sessionKey: String {
+        "session_\(projectURL?.path ?? "")"
+    }
+
+    func saveSession() {
+        guard let projectURL else { return }
+        let key = sessionKey
+
+        // Editor tabs — save file paths and selected
+        let tabPaths = openEditorTabs.compactMap { tab -> String? in
+            guard !tab.isDiff else { return nil }
+            return tab.file.url.path
+        }
+        let selectedPath = selectedEditorTab?.file.url.path ?? ""
+        UserDefaults.standard.set(tabPaths, forKey: "\(key)_editorTabs")
+        UserDefaults.standard.set(selectedPath, forKey: "\(key)_selectedTab")
+
+        // Terminal tabs — save working directories
+        let termPaths = terminalTabs.compactMap { $0.workingDirectory?.path }
+        UserDefaults.standard.set(termPaths, forKey: "\(key)_terminalTabs")
+
+        // Expanded folders
+        UserDefaults.standard.set(Array(expandedFolders), forKey: "\(key)_expandedFolders")
+
+        // Panel visibility
+        UserDefaults.standard.set(showSidebar, forKey: "\(key)_showSidebar")
+        UserDefaults.standard.set(showTerminal, forKey: "\(key)_showTerminal")
+    }
+
+    private func restoreSession() {
+        guard let projectURL else { return }
+        let key = sessionKey
+
+        // Expanded folders
+        if let saved = UserDefaults.standard.stringArray(forKey: "\(key)_expandedFolders") {
+            expandedFolders = Set(saved)
+        }
+
+        // Panel visibility
+        if UserDefaults.standard.object(forKey: "\(key)_showSidebar") != nil {
+            showSidebar = UserDefaults.standard.bool(forKey: "\(key)_showSidebar")
+        }
+        if UserDefaults.standard.object(forKey: "\(key)_showTerminal") != nil {
+            showTerminal = UserDefaults.standard.bool(forKey: "\(key)_showTerminal")
+        }
+
+        // Terminal tabs
+        if let termPaths = UserDefaults.standard.stringArray(forKey: "\(key)_terminalTabs"), !termPaths.isEmpty {
+            terminalTabs.removeAll()
+            for path in termPaths {
+                let url = URL(fileURLWithPath: path)
+                if FileManager.default.fileExists(atPath: path) {
+                    terminalTabs.append(TerminalTab(workingDirectory: url))
+                }
+            }
+            if terminalTabs.isEmpty {
+                terminalTabs.append(TerminalTab(workingDirectory: projectURL))
+            }
+            selectedTerminalTabID = terminalTabs.first?.id
+        }
+
+        // Editor tabs — restore after a short delay so file tree is ready
+        if let tabPaths = UserDefaults.standard.stringArray(forKey: "\(key)_editorTabs"), !tabPaths.isEmpty {
+            let selectedPath = UserDefaults.standard.string(forKey: "\(key)_selectedTab") ?? ""
+            Task { @MainActor in
+                // Wait for file tree to load
+                try? await Task.sleep(for: .milliseconds(300))
+                for path in tabPaths {
+                    let url = URL(fileURLWithPath: path)
+                    guard FileManager.default.fileExists(atPath: path) else { continue }
+                    let name = url.lastPathComponent
+                    let file = FileItem(name: name, url: url, isDirectory: false, children: nil)
+                    self.openFile(file)
+                }
+                // Select the previously selected tab
+                if !selectedPath.isEmpty {
+                    if let tab = self.openEditorTabs.first(where: { $0.file.url.path == selectedPath }) {
+                        self.selectedEditorTabID = tab.id
+                    }
+                }
+            }
+        }
+    }
+
+    func toggleFolder(_ relativePath: String) {
+        if expandedFolders.contains(relativePath) {
+            expandedFolders.remove(relativePath)
+        } else {
+            expandedFolders.insert(relativePath)
+        }
+        saveSession()
+    }
+
+    func isFolderExpanded(_ relativePath: String) -> Bool {
+        expandedFolders.contains(relativePath)
     }
 }

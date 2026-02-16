@@ -20,10 +20,12 @@ struct FileContentView: View {
                                     onCloseOthers: {
                                         state.openEditorTabs.removeAll { $0.id != tab.id }
                                         state.selectedEditorTabID = tab.id
+                                        state.saveSession()
                                     },
                                     onCloseAll: {
                                         state.openEditorTabs.removeAll()
                                         state.selectedEditorTabID = nil
+                                        state.saveSession()
                                     }
                                 )
                             }
@@ -164,6 +166,7 @@ private struct EditorTabButton: View {
                 Circle()
                     .fill(Theme.textMuted)
                     .frame(width: 6, height: 6)
+                    .help("Unsaved Changes")
             } else {
                 Button(action: onClose) {
                     Image(systemName: "xmark")
@@ -172,10 +175,11 @@ private struct EditorTabButton: View {
                 }
                 .buttonStyle(.borderless)
                 .opacity(isHovered || isSelected ? 1 : 0)
+                .help("Close Tab")
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 7)
         .background(
             isSelected ? Theme.bg :
             isHovered ? Theme.bgHover : Theme.bgHeader

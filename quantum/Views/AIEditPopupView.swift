@@ -133,6 +133,7 @@ struct AIEditPopupView: View {
                     }
                     .buttonStyle(.borderless)
                     .disabled(prompt.isEmpty || selectedModelID.isEmpty || isLoading)
+                    .help("Submit AI edit request (\u{2318}\u{21A9})")
                 }
             }
             .padding(.horizontal, 14)

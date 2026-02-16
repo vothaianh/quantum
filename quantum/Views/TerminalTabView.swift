@@ -9,8 +9,8 @@ struct TerminalTabView: NSViewRepresentable {
         let termView = LocalProcessTerminalView(frame: .zero)
 
         // Dark theme colors
-        let bgColor = NSColor(srgbRed: 0.059, green: 0.067, blue: 0.082, alpha: 1)  // #0F1115
-        let fgColor = NSColor(srgbRed: 0.847, green: 0.863, blue: 0.894, alpha: 1)  // #D8DCE4
+        let bgColor = NSColor(srgbRed: 0.059, green: 0.059, blue: 0.059, alpha: 1)  // #0F0F0F
+        let fgColor = NSColor(srgbRed: 0.847, green: 0.910, blue: 0.875, alpha: 1)  // #D8E8DF
 
         termView.nativeBackgroundColor = bgColor
         termView.nativeForegroundColor = fgColor

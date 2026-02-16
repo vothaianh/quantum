@@ -60,3 +60,13 @@ struct GitFileStatus: Identifiable {
         }
     }
 }
+
+struct GitCommitLog: Identifiable {
+    let id: String          // commit hash (short)
+    let fullHash: String
+    let message: String
+    let author: String
+    let date: Date
+    let relativeDate: String
+    var isRemoteOnly: Bool = false  // true = unpulled commit from remote
+}

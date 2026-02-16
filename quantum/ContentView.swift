@@ -9,6 +9,13 @@ struct ContentView: View {
     @Binding var openFolderTrigger: Bool
     @Binding var saveTrigger: Bool
     @Binding var saveAsTrigger: Bool
+    @Binding var zoomInTrigger: Bool
+    @Binding var zoomOutTrigger: Bool
+    @Binding var zoomResetTrigger: Bool
+    @Binding var goToFileTrigger: Bool
+    @Binding var findInFilesTrigger: Bool
+    @Binding var toggleSidebarTrigger: Bool
+    @Binding var toggleTerminalTrigger: Bool
 
     var body: some View {
         Group {
@@ -55,19 +62,20 @@ struct ContentView: View {
                                     }
                                     .buttonStyle(.plain)
                                     .frame(width: totalWidth * 0.3)
+                                    .help("Go to File (\u{2318}P)")
 
                                     // Action buttons — top right
                                     HStack {
                                         Spacer()
                                         HStack(spacing: 2) {
                                             ModelPickerButton()
-                                            titleBarButton(icon: "sidebar.left") {
+                                            titleBarButton(icon: "sidebar.left", tooltip: "Toggle Sidebar (\u{2318}B)") {
                                                 state.showSidebar.toggle()
                                             }
-                                            titleBarButton(icon: "terminal") {
+                                            titleBarButton(icon: "terminal", tooltip: "Toggle Terminal (\u{2318}`)") {
                                                 state.showTerminal.toggle()
                                             }
-                                            titleBarButton(icon: "gearshape") {
+                                            titleBarButton(icon: "gearshape", tooltip: "Settings (\u{2318},)") {
                                                 showSettings = true
                                             }
                                         }
@@ -133,6 +141,7 @@ struct ContentView: View {
         .onAppear {
             state.loadZoom()
             state.loadRecents()
+            state.startObservingFileSaves()
             let args = ProcessInfo.processInfo.arguments
             if args.count > 1 {
                 let path = args[args.count - 1]
@@ -144,6 +153,9 @@ struct ContentView: View {
             }
             state.restoreLastProject()
         }
+        .onDisappear {
+            state.saveSession()
+        }
         .onChange(of: openFolderTrigger) {
             openFolder()
         }
@@ -153,24 +165,31 @@ struct ContentView: View {
         .onChange(of: saveAsTrigger) {
             saveCurrentFileAs()
         }
-        .background {
-            Group {
-                Button("") { state.zoomIn() }
-                    .keyboardShortcut("+", modifiers: .command)
-                Button("") { state.zoomIn() }
-                    .keyboardShortcut("=", modifiers: .command)
-                Button("") { state.zoomOut() }
-                    .keyboardShortcut("-", modifiers: .command)
-                Button("") { state.zoomReset() }
-                    .keyboardShortcut("0", modifiers: .command)
-                Button("") { showQuickOpen = true }
-                    .keyboardShortcut("p", modifiers: .command)
-            }
-            .hidden()
+        .onChange(of: zoomInTrigger) {
+            state.zoomIn()
+        }
+        .onChange(of: zoomOutTrigger) {
+            state.zoomOut()
+        }
+        .onChange(of: zoomResetTrigger) {
+            state.zoomReset()
+        }
+        .onChange(of: goToFileTrigger) {
+            showQuickOpen = true
+        }
+        .onChange(of: findInFilesTrigger) {
+            state.showSidebar = true
+            state.sidebarTab = .search
+        }
+        .onChange(of: toggleSidebarTrigger) {
+            state.showSidebar.toggle()
+        }
+        .onChange(of: toggleTerminalTrigger) {
+            state.showTerminal.toggle()
         }
     }
 
-    private func titleBarButton(icon: String, action: @escaping () -> Void) -> some View {
+    private func titleBarButton(icon: String, tooltip: String = "", action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(.system(size: 15, weight: .medium))
@@ -179,6 +198,7 @@ struct ContentView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .help(tooltip)
     }
 
     // MARK: - Model Picker Button
@@ -232,6 +252,7 @@ struct ContentView: View {
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
+            .help("Select AI Model")
         }
     }
 
@@ -242,6 +263,7 @@ struct ContentView: View {
             if let idx = state.openEditorTabs.firstIndex(where: { $0.id == tab.id }) {
                 state.openEditorTabs[idx].isModified = false
             }
+            NotificationCenter.default.post(name: .fileSaved, object: nil)
         } catch {
             print("Save failed: \(error)")
         }
@@ -323,6 +345,7 @@ private struct CommandPalette: View {
                                 .foregroundStyle(Theme.textMuted)
                         }
                         .buttonStyle(.plain)
+                        .help("Clear Search")
                     }
                 }
                 .padding(.horizontal, 16)
@@ -669,5 +692,5 @@ private extension Comparable {
 }
 
 #Preview {
-    ContentView(showSettings: .constant(false), openFolderTrigger: .constant(false), saveTrigger: .constant(false), saveAsTrigger: .constant(false))
+    ContentView(showSettings: .constant(false), openFolderTrigger: .constant(false), saveTrigger: .constant(false), saveAsTrigger: .constant(false), zoomInTrigger: .constant(false), zoomOutTrigger: .constant(false), zoomResetTrigger: .constant(false), goToFileTrigger: .constant(false), findInFilesTrigger: .constant(false), toggleSidebarTrigger: .constant(false), toggleTerminalTrigger: .constant(false))
 }
