@@ -28,7 +28,7 @@ struct FileService {
         if let contents = try? fm.contentsOfDirectory(
             at: url,
             includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
+            options: []
         ) {
             for itemURL in contents {
                 let name = itemURL.lastPathComponent
@@ -39,6 +39,7 @@ struct FileService {
                     let child = loadDirectory(at: itemURL, depth: depth + 1, maxDepth: maxDepth)
                     children.append(child)
                 } else {
+                    if name == ".DS_Store" { continue }
                     children.append(FileItem(name: name, url: itemURL, isDirectory: false, children: nil))
                 }
             }

@@ -18,24 +18,26 @@ struct TerminalTabView: NSViewRepresentable {
         let fontSize = 11.0 * zoom
         termView.font = NSFont(name: "Menlo", size: fontSize) ?? NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
 
-        // Start shell
+        // Start shell as login shell so it sources ~/.zprofile, ~/.zshrc, etc.
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
-        let dir = tab.workingDirectory?.path ?? NSHomeDirectory()
 
         var env = ProcessInfo.processInfo.environment
         env["TERM"] = "xterm-256color"
         env.removeValue(forKey: "CLAUDECODE")
 
+        let cwd = tab.workingDirectory?.path ?? NSHomeDirectory()
+        env["HOME"] = NSHomeDirectory()
+
         termView.startProcess(
             executable: shell,
-            args: [],
+            args: ["--login"],
             environment: env.map { "\($0.key)=\($0.value)" },
-            execName: (shell as NSString).lastPathComponent
+            execName: "-" + (shell as NSString).lastPathComponent,
+            currentDirectory: cwd
         )
 
-        if let cwd = tab.workingDirectory {
-            let cdCmd = "cd \(cwd.path.replacingOccurrences(of: " ", with: "\\ ")) && clear\n"
-            termView.send(txt: cdCmd)
+        if tab.workingDirectory != nil {
+            termView.send(txt: "clear\n")
         }
 
         return termView

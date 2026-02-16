@@ -11,35 +11,37 @@ struct CodeView: View {
         let gutterW = CGFloat(digits) * 8.0 * zoom + 20
         let fontSize = 11.0 * zoom
 
-        ScrollView([.horizontal, .vertical]) {
-            HStack(alignment: .top, spacing: 0) {
-                // Line numbers — single Text with newlines for perfect alignment
-                Text(lineNumbersText(count: lineCount))
-                    .font(.system(size: fontSize, design: .monospaced))
-                    .foregroundStyle(Theme.textMuted)
-                    .lineSpacing(3)
-                    .multilineTextAlignment(.trailing)
-                    .frame(width: gutterW, alignment: .trailing)
-                    .padding(.vertical, 10)
-                    .background(Theme.bgGutter)
+        GeometryReader { geo in
+            ScrollView([.horizontal, .vertical]) {
+                HStack(alignment: .top, spacing: 0) {
+                    // Line numbers — single Text with newlines for perfect alignment
+                    Text(lineNumbersText(count: lineCount))
+                        .font(.system(size: fontSize, design: .monospaced))
+                        .foregroundStyle(Theme.textMuted)
+                        .lineSpacing(3)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: gutterW, alignment: .trailing)
+                        .padding(.vertical, 4)
+                        .background(Theme.bgGutter)
 
-                // Separator
-                Rectangle()
-                    .fill(Theme.border)
-                    .frame(width: 1)
+                    // Separator
+                    Rectangle()
+                        .fill(Theme.border)
+                        .frame(width: 1)
 
-                // Syntax-highlighted code
-                codeText(fontSize: fontSize)
-                    .textSelection(.enabled)
-                    .lineSpacing(3)
-                    .fixedSize(horizontal: true, vertical: true)
-                    .padding(.leading, 12)
-                    .padding(.trailing, 20)
-                    .padding(.vertical, 10)
+                    // Syntax-highlighted code
+                    codeText(fontSize: fontSize)
+                        .textSelection(.enabled)
+                        .lineSpacing(3)
+                        .fixedSize(horizontal: true, vertical: true)
+                        .padding(.leading, 12)
+                        .padding(.trailing, 20)
+                        .padding(.vertical, 4)
+                }
+                .frame(minHeight: geo.size.height, alignment: .top)
             }
         }
         .background(Theme.bg)
-        .darkScrollers()
     }
 
     // MARK: - Helpers

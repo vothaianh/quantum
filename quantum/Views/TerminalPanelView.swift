@@ -25,14 +25,17 @@ struct TerminalPanelView: View {
 
                 Button(action: addTab) {
                     Image(systemName: "plus")
-                        .font(.zoomed(size: 11, zoom: zoom, weight: .medium))
-                        .foregroundStyle(Theme.textSecondary)
+                        .font(.zoomed(size: 10, zoom: zoom, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 22, height: 22)
+                        .background(Theme.accent)
+                        .clipShape(Circle())
                 }
                 .buttonStyle(.borderless)
                 .padding(.horizontal, 8)
             }
             .padding(.vertical, 4)
-            .background(Theme.bgHeader)
+            .background(Theme.bgTerminal)
 
             Rectangle()
                 .fill(Theme.border)
@@ -40,7 +43,8 @@ struct TerminalPanelView: View {
 
             if let tab = state.selectedTerminalTab {
                 TerminalTabView(tab: tab)
-                    .padding(10)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 10)
                     .background(Theme.bgTerminal)
                     .id(tab.id)
             } else {

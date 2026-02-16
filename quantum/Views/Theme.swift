@@ -93,29 +93,38 @@ extension NSColor {
     static let activeLine         = NSColor(white: 1.0, alpha: 0.03)
 }
 
-// MARK: - Dark Scroller Modifier
+// MARK: - Dark Scrollbar Swizzling
 
-/// Finds the backing NSScrollView and sets dark knob style
-struct DarkScrollerViewFinder: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        DispatchQueue.main.async {
-            var current: NSView? = view.superview
-            while let v = current {
-                if let sv = v as? NSScrollView {
-                    sv.scrollerKnobStyle = .dark
-                    break
-                }
-                current = v.superview
-            }
+extension NSScroller {
+    static let swizzleOnce: Void = {
+        let drawKnob = #selector(NSScroller.drawKnob as (NSScroller) -> () -> Void)
+        let darkKnob = #selector(NSScroller.q_drawKnob)
+        if let orig = class_getInstanceMethod(NSScroller.self, drawKnob),
+           let repl = class_getInstanceMethod(NSScroller.self, darkKnob) {
+            method_exchangeImplementations(orig, repl)
         }
-        return view
-    }
-    func updateNSView(_ nsView: NSView, context: Context) {}
-}
 
-extension View {
-    func darkScrollers() -> some View {
-        background(DarkScrollerViewFinder())
+        let drawSlot = #selector(NSScroller.drawKnobSlot(in:highlight:))
+        let darkSlot = #selector(NSScroller.q_drawKnobSlot(in:highlight:))
+        if let orig = class_getInstanceMethod(NSScroller.self, drawSlot),
+           let repl = class_getInstanceMethod(NSScroller.self, darkSlot) {
+            method_exchangeImplementations(orig, repl)
+        }
+    }()
+
+    @objc func q_drawKnob() {
+        let r = rect(for: .knob)
+        guard r.width > 0, r.height > 0 else { return }
+        let inset = r.width > r.height
+            ? r.insetBy(dx: 1, dy: 2)
+            : r.insetBy(dx: 2, dy: 1)
+        let radius = min(inset.width, inset.height) / 2
+        let path = NSBezierPath(roundedRect: inset, xRadius: radius, yRadius: radius)
+        NSColor(white: 0.22, alpha: 0.50).setFill()
+        path.fill()
+    }
+
+    @objc func q_drawKnobSlot(in slotRect: NSRect, highlight flag: Bool) {
+        // Transparent track
     }
 }
